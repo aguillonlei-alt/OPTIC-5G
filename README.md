@@ -92,3 +92,8 @@ BS Electronics Engineering 4-3
 Thesis – AY 2025-2026
 
 Jann Lei Randolf A. Aguillon
+
+📜 Citation
+Aguillon J.L.R.A. et al. (2025).
+OPTIC-5G: Optimized Placement and Topology through Integration of Classical and Quantum Optimization Techniques.
+Polytechnic University of the Philippines, Sta. Mesa.
