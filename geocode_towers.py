@@ -3,8 +3,8 @@ from geopy.geocoders import Nominatim
 from time import sleep
 from pathlib import Path
 
-input_file = Path("data/manila_towers_clean.csv")
-output_file = Path("data/manila_towers_geocoded.csv")
+input_file = Path("..data/manila_towers_clean.csv")
+output_file = Path("..data/manila_towers_geocoded.csv")
 
 # Read tower list
 df = pd.read_csv(input_file, names=["text"], skip_blank_lines=True)
