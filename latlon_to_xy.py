@@ -3,8 +3,8 @@ from pyproj import Transformer
 from pathlib import Path
 
 # Input and output files
-input_file = Path("data/manila_towers_geocoded.csv")
-output_file = Path("data/manila_towers_xy.csv")
+input_file = Path("../data/manila_towers_geocoded.csv")
+output_file = Path("../data/manila_towers_xy.csv")
 
 # Read the geocoded data
 df = pd.read_csv(input_file)
@@ -26,5 +26,6 @@ xs, ys = transformer.transform(df[lon_col].values, df[lat_col].values)
 df["x_m"] = xs
 df["y_m"] = ys
 
+output_file.parent.mkdir(parents=True, exist_ok=True)  # Ensure parent folder exists
 df.to_csv(output_file, index=False)
-print("✅ Saved", output_file, "with x_m,y_m in meters (UTM Zone 51N).")
+print(f"✅ Saved: {output_file} with x_m, y_m in meters (UTM Zone 51N)")
