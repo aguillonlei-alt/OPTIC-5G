@@ -14,7 +14,7 @@ lat_cols = [c for c in df.columns if "lat" in c.lower()]
 lon_cols = [c for c in df.columns if "lon" in c.lower() or "long" in c.lower()]
 
 if not lat_cols or not lon_cols:
-    raise ValueError("❌ No latitude/longitude columns found in file.")
+    raise ValueError("No latitude/longitude columns found in file.")
 
 lat_col, lon_col = lat_cols[0], lon_cols[0]
 print(f"Using columns: {lat_col} (lat), {lon_col} (lon)")
@@ -28,4 +28,4 @@ df["y_m"] = ys
 
 output_file.parent.mkdir(parents=True, exist_ok=True)  # Ensure parent folder exists
 df.to_csv(output_file, index=False)
-print(f"✅ Saved: {output_file} with x_m, y_m in meters (UTM Zone 51N)")
+print(f"Saved: {output_file} with x_m, y_m in meters (UTM Zone 51N)")
