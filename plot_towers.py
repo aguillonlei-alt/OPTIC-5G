@@ -1,83 +1,75 @@
+#!/usr/bin/env python3
 import pandas as pd
 import geopandas as gpd
 import matplotlib.pyplot as plt
-from shapely.geometry import Point
+from matplotlib.patches import Wedge, Circle
 import contextily as ctx
-from pathlib import Path
 
-# --------[ CONFIG ]--------
-data_dir = Path("../data")
-xy_file = data_dir / "manila_towers_xy.csv"
-geo_file = data_dir / "manila_towers_geocoded.csv"
-csv_path = None
+# 1. Load Data
+file_path = "data/manila_towers_geocoded_fixed.csv"
+try:
+    df = pd.read_csv(file_path)
+except FileNotFoundError:
+    print(f"File not found: {file_path}")
+    exit()
 
-if xy_file.is_file():
-    csv_path = xy_file
-    print(f"🗂️ Using XY file: {xy_file}")
-elif geo_file.is_file():
-    csv_path = geo_file
-    print(f"🗂️ Using geocoded file: {geo_file}")
-else:
-    raise FileNotFoundError("No data file found in ../data/ directory.")
+# 2. Filter for Manila Area (Fixes "Zoomed Out" issue)
+# Manila approx bounds: Lat 14.5 to 14.7, Lon 120.9 to 121.1
+df = df[ (df['latitude'] > 14.50) & (df['latitude'] < 14.75) ]
+df = df[ (df['longitude'] > 120.90) & (df['longitude'] < 121.15) ]
 
-df = pd.read_csv(csv_path)
+if len(df) == 0:
+    print("Error: No towers found inside Manila bounds. Check your CSV coordinates.")
+    exit()
 
-# --------[ GET THE RIGHT COORDINATES ]--------
-if {'x_m', 'y_m'}.issubset(df.columns):
-    x_col, y_col = 'x_m', 'y_m'
-    plot_crs = "EPSG:32651"   # UTM Zone 51N
-    print("Coordinates: x_m/y_m (meters)")
-else:
-    lat_col = next((c for c in df.columns if "lat" in c.lower()), None)
-    lon_col = next((c for c in df.columns if "lon" in c.lower() or "long" in c.lower()), None)
-    if not lat_col or not lon_col:
-        raise ValueError("No latitude/longitude columns found!")
-    x_col, y_col = lon_col, lat_col
-    plot_crs = "EPSG:4326"
-    print(f"Coordinates: {lat_col}, {lon_col} (degrees)")
-
-gdf = gpd.GeoDataFrame(
-    df, 
-    geometry=[Point(xy) for xy in zip(df[x_col], df[y_col])],
-    crs=plot_crs
-)
-
-# Convert CRS to Web Mercator
+# Convert to WebMercator for Plotting
+gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df["longitude"], df["latitude"]), crs="EPSG:4326")
 gdf = gdf.to_crs(epsg=3857)
 
-fig, ax = plt.subplots(figsize=(10, 10))
+# 3. Setup Plot
+fig, ax = plt.subplots(figsize=(15, 15))
 
-# Focus on Manila only
-manila_xmin, manila_xmax = 13457300, 13475000
-manila_ymin, manila_ymax = 1635000, 1650000
-ax.set_xlim(manila_xmin, manila_xmax)
-ax.set_ylim(manila_ymin, manila_ymax)
+# Smart Zoom: Use the bounds of the filtered data + buffer
+minx, miny, maxx, maxy = gdf.total_bounds
+buffer = 1000 # 1km buffer
+ax.set_xlim(minx - buffer, maxx + buffer)
+ax.set_ylim(miny - buffer, maxy + buffer)
 
-signal_radius = 750  # meters
+# 4. Draw Towers
+print(f"--> Plotting {len(gdf)} towers in Manila...")
+count_dir = 0
 
-# Plot signal radius at each tower
-for geom in gdf.geometry:
-    circle = plt.Circle(
-        (geom.x, geom.y), 
-        radius=signal_radius, 
-        facecolor='blue', edgecolor='blue', alpha=0.10
-    )
-    ax.add_patch(circle)
+for idx, row in gdf.iterrows():
+    x, y = row.geometry.x, row.geometry.y
+    azimuth = row.get('azimuth_deg', float('nan'))
+    
+    # Force visible radius for the map
+    vis_radius = 600.0 
 
-ax.scatter(
-    [geom.x for geom in gdf.geometry], 
-    [geom.y for geom in gdf.geometry], 
-    color="red", s=30, zorder=10, label="Tower"
-)
+    if pd.notna(azimuth):
+        count_dir += 1
+        # Convert Compass (CW North) to Math (CCW East)
+        center_angle = 90 - azimuth
+        patch = Wedge((x, y), vis_radius, center_angle - 30, center_angle + 30, 
+                      color='blue', alpha=0.5, width=vis_radius)
+        ax.add_patch(patch)
+    else:
+        patch = Circle((x, y), vis_radius/2, color='red', alpha=0.5)
+        ax.add_patch(patch)
 
-ctx.add_basemap(ax, source=ctx.providers.OpenStreetMap.Mapnik, zoom=15)
+# Add center dots
+gdf.plot(ax=ax, color='black', markersize=10, zorder=10)
 
-plt.title("5G/LTE Tower Locations in Manila (+ signal radius)", fontweight="bold")
-plt.xlabel("Longitude")
-plt.ylabel("Latitude")
+# 5. Background Map
+try:
+    ctx.add_basemap(ax, source=ctx.providers.OpenStreetMap.Mapnik)
+except:
+    print("No internet for map tiles.")
+
+ax.set_title(f"OPTIC-5G Manila: {count_dir} Directional / {len(gdf)} Total", fontsize=16)
+ax.set_axis_off()
 plt.tight_layout()
-plt.legend(loc="upper right")
 
-out_png = data_dir / "manila_towers_plot.png"
-plt.savefig(out_png, dpi=300, bbox_inches="tight")
-print(f"✅ Plot saved to {out_png}")
+output_file = "data/manila_towers_visualization.png"
+plt.savefig(output_file, dpi=300)
+print(f"Saved Map: {output_file}")
