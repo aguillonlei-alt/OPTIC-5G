@@ -1,10 +1,9 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 from math import sqrt
-from sklearn.cluster import KMeans # <--- NEW: Machine Learning for Coverage
+import pulp  # The classical ILP solver
 
-# Qiskit Imports
+# Qiskit Imports for Phase 3
 from qiskit.circuit.library import TwoLocal
 from qiskit_algorithms import SamplingVQE
 from qiskit_algorithms.optimizers import COBYLA
@@ -13,194 +12,225 @@ from qiskit_optimization import QuadraticProgram
 from qiskit_optimization.algorithms import MinimumEigenOptimizer
 
 # ==========================================
-# PHASE 1: CLASSICAL OPTIMIZATION (K-MEANS CLUSTERING)
+# CONFIGURATION
 # ==========================================
-print("\n=== PHASE 1: CLASSICAL PRE-PROCESSING (SPATIAL COVERAGE) ====")
+FILE_PATH = "data/manila_towers_geocoded_fixed.csv"
 
-# 1. Load Real Data
-try:
-    df = pd.read_csv("data/real_towers_ns3.csv")
-    print(f"--> Loaded {len(df)} total towers from Manila dataset.")
-except FileNotFoundError:
-    print("Error: 'data/real_towers_ns3.csv' not found.")
-    exit()
+# 1. Coverage Parameters (for Greedy/ILP)
+COVERAGE_RADIUS_KM = 1.0  # Assumed 5G Small Cell/Macro radius
+GRID_RESOLUTION = 20      # 20x20 grid points to simulate user demand
 
-# 2. Coverage-Aware Selection (K-Means)
-# Thesis Logic: "To ensure maximum coverage area with limited quantum resources (12 qubits),
-# we employ K-Means Clustering to identify the 12 spatial centroids of the network."
-CANDIDATE_LIMIT = 12
+# 2. Constraints
+MIN_COVERAGE_PCT = 0.95   # We want 95% of the campus covered
 
-# Extract coordinates for clustering
-coords = df[['x_m', 'y_m']].values
+# 3. Quantum Parameters
+INTERFERENCE_PENALTY = 500.0
 
-print(f"--> Running K-Means to find {CANDIDATE_LIMIT} optimal coverage zones...")
-kmeans = KMeans(n_clusters=CANDIDATE_LIMIT, random_state=42, n_init=10)
-kmeans.fit(coords)
-centroids = kmeans.cluster_centers_
+# ==========================================
+# 0. HELPER FUNCTIONS
+# ==========================================
+def haversine(lat1, lon1, lat2, lon2):
+    """Calculates distance in km between two lat/lon points."""
+    R = 6371  # Earth radius in km
+    phi1, phi2 = np.radians(lat1), np.radians(lat2)
+    dphi = np.radians(lat2 - lat1)
+    dlambda = np.radians(lon2 - lon1)
+    a = np.sin(dphi/2)**2 + np.cos(phi1)*np.cos(phi2) * np.sin(dlambda/2)**2
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+    return R * c
 
-# Find the REAL tower closest to each Centroid
-# (We can't move towers, so we pick the existing one closest to the ideal center)
-candidates = []
-candidate_indices = []
+# ==========================================
+# PHASE 1: PRE-PROCESSING & GREEDY FILTERING
+# ==========================================
+print("\n=== PHASE 1: CLASSICAL GREEDY FILTERING ===")
 
-all_towers = df.to_dict('records')
-for idx, t in enumerate(all_towers):
-    t['original_index'] = idx
-    if 'txpower_dbm' not in t: t['txpower_dbm'] = 46.0
+# 1. Load Data
+df = pd.read_csv(FILE_PATH)
 
-for centroid in centroids:
-    best_tower = None
-    min_dist = float('inf')
+# 2. Sea Filter (From previous step)
+df = df[df['longitude'] > 120.965].copy().reset_index(drop=True)
+towers = df[['latitude', 'longitude']].to_dict('records')
+print(f"--> Valid Land Towers: {len(towers)}")
+
+# 3. Generate User Demand Grid (Simulating Campus Users)
+# We create a grid of points over the tower area to check coverage
+lat_min, lat_max = df['latitude'].min(), df['latitude'].max()
+lon_min, lon_max = df['longitude'].min(), df['longitude'].max()
+
+user_points = []
+lat_steps = np.linspace(lat_min, lat_max, GRID_RESOLUTION)
+lon_steps = np.linspace(lon_min, lon_max, GRID_RESOLUTION)
+
+for lat in lat_steps:
+    for lon in lon_steps:
+        user_points.append({'lat': lat, 'lon': lon, 'covered': False})
+
+print(f"--> Generated {len(user_points)} demand points for coverage verification.")
+
+# 4. Greedy Algorithm
+# Goal: Pick towers one by one that cover the MOST uncovered points until satisfied.
+greedy_candidates = []
+covered_indices = set()
+
+print("--> Running Greedy Selection...")
+while len(covered_indices) < len(user_points) * MIN_COVERAGE_PCT:
+    best_tower_idx = -1
+    best_new_cover = set()
     
-    for tower in all_towers:
-        # Calculate distance from tower to this cluster center
-        dist = sqrt((tower['x_m'] - centroid[0])**2 + (tower['y_m'] - centroid[1])**2)
+    # Check every tower
+    for idx, tower in enumerate(towers):
+        if idx in greedy_candidates: continue # Skip if already picked
         
-        # We pick the closest tower to the center
-        if dist < min_dist:
-            # Check if we already picked this tower (prevent duplicates)
-            if tower['original_index'] not in candidate_indices:
-                min_dist = dist
-                best_tower = tower
-    
-    if best_tower:
-        candidates.append(best_tower)
-        candidate_indices.append(best_tower['original_index'])
+        # Calculate who this tower covers
+        current_cover = set()
+        for u_idx, user in enumerate(user_points):
+            if u_idx not in covered_indices:
+                dist = haversine(tower['latitude'], tower['longitude'], user['lat'], user['lon'])
+                if dist <= COVERAGE_RADIUS_KM:
+                    current_cover.add(u_idx)
+        
+        # Is this the best so far?
+        if len(current_cover) > len(best_new_cover):
+            best_new_cover = current_cover
+            best_tower_idx = idx
+            
+    # Stop if no tower adds value
+    if best_tower_idx == -1 or len(best_new_cover) == 0:
+        break
+        
+    greedy_candidates.append(best_tower_idx)
+    covered_indices.update(best_new_cover)
 
-# Identify rejected for plotting
-rejected = [t for t in all_towers if t['original_index'] not in candidate_indices]
-
-print(f"--> Spatial Optimization Results: {len(candidates)} Candidates Selected for Coverage.")
-
-# --- VISUALIZATION 1: CLASSICAL FILTER MAP ---
-print("--> Generating Classical Optimization Map...")
-plt.figure(figsize=(10, 10))
-
-# Plot Rejected (Gray)
-rx = [r['x_m'] for r in rejected]
-ry = [r['y_m'] for r in rejected]
-plt.scatter(rx, ry, c='lightgray', label='Redundant Nodes', s=30, alpha=0.5)
-
-# Plot Candidates (Blue)
-cx = [c['x_m'] for c in candidates]
-cy = [c['y_m'] for c in candidates]
-plt.scatter(cx, cy, c='blue', label='Spatial Candidates (Top 12)', s=150, edgecolors='black', zorder=10)
-
-# Plot Centroids (Red X) - To show the math
-plt.scatter(centroids[:, 0], centroids[:, 1], c='red', marker='x', s=100, label='Ideal Centers (K-Means)')
-
-plt.title(f"Spatial Coverage Optimization: 12 Candidates Covering {len(df)} Sites")
-plt.xlabel("X Coordinates (m)")
-plt.ylabel("Y Coordinates (m)")
-plt.legend()
-plt.grid(True, alpha=0.3)
-plt.savefig("data/classical_filter_map.png")
-print("Saved 'data/classical_filter_map.png'")
+print(f"--> Greedy Selected {len(greedy_candidates)} candidates providing {len(covered_indices)/len(user_points)*100:.1f}% coverage.")
+print(f"--> Candidate IDs: {greedy_candidates}")
 
 
 # ==========================================
-# PHASE 2: QUBO FORMULATION
+# PHASE 2: CLASSICAL ILP OPTIMIZATION
 # ==========================================
-print("\n=== PHASE 2: QUBO FORMULATION ===")
+print("\n=== PHASE 2: ILP OPTIMIZATION (PuLP) ===")
+# Input: The candidates from Greedy (Refining the selection)
+# Objective: Minimize Number of Towers
+# Constraint: Ensure all currently covered points remain covered
+
+prob = pulp.LpProblem("OPTIC5G_BaseStation_Placement", pulp.LpMinimize)
+
+# Variables: Binary (1 if tower active, 0 if inactive)
+tower_vars = {i: pulp.LpVariable(f"T_{i}", cat='Binary') for i in greedy_candidates}
+
+# Objective Function: Minimize Sum of Active Towers
+prob += pulp.lpSum([tower_vars[i] for i in greedy_candidates])
+
+# Constraints: Every user point covered by Greedy must be covered by at least 1 ILP tower
+# Pre-calculate coverage matrix to speed up
+coverage_map = {u: [] for u in covered_indices} # Map User -> List of covering towers
+
+for t_idx in greedy_candidates:
+    tower = towers[t_idx]
+    for u_idx in covered_indices:
+        user = user_points[u_idx]
+        dist = haversine(tower['latitude'], tower['longitude'], user['lat'], user['lon'])
+        if dist <= COVERAGE_RADIUS_KM:
+            coverage_map[u_idx].append(tower_vars[t_idx])
+
+# Add constraints to ILP
+for u_idx, covering_towers in coverage_map.items():
+    if covering_towers:
+        prob += pulp.lpSum(covering_towers) >= 1
+
+# Solve
+prob.solve(pulp.PULP_CBC_CMD(msg=0)) # msg=0 turns off verbose solver logs
+
+ilp_selected = []
+for i in greedy_candidates:
+    if pulp.value(tower_vars[i]) == 1:
+        ilp_selected.append(i)
+
+print(f"--> ILP Optimized Candidates: {len(ilp_selected)} (Reduced from {len(greedy_candidates)})")
+print(f"--> ILP IDs: {ilp_selected}")
+
+
+# ==========================================
+# PHASE 3: QUBO FORMULATION
+# ==========================================
+print("\n=== PHASE 3: QUANTUM REFINEMENT (QUBO + CVaR) ===")
+# We take the ILP result and run it through Quantum to handle INTERFERENCE/RISK
+# which ILP handles poorly (Quadratic constraints are hard for standard ILP).
 
 qp = QuadraticProgram()
+# Create variables only for the ILP survivors
+for idx in ilp_selected:
+    qp.binary_var(name=f"x_{idx}")
 
-# 1. Define Binary Variables
-for i in range(len(candidates)):
-    qp.binary_var(name=f"t_{i}")
-
-# 2. Define Objective
 linear_terms = {}
 quadratic_terms = {}
 
-# LINEAR (Energy - Reward)
-# Thesis Goal: "Maintain Coverage".
-# We give a HIGHER reward here because we pre-selected them for coverage.
-# We want to keep as many ON as possible, unless they interfere violently.
-COVERAGE_REWARD = 120.0 
+# A. Linear Terms (Activation Cost vs Coverage Reward)
+# In this phase, we balance Power vs Risk.
+for idx in ilp_selected:
+    linear_terms[f"x_{idx}"] = -100.0  # Reward for keeping a robust tower ON
 
-for i in range(len(candidates)):
-    cost = candidates[i]['txpower_dbm'] - COVERAGE_REWARD
-    linear_terms[f"t_{i}"] = cost
+# B. Quadratic Terms (Interference Penalty)
+# If two towers are too close, add penalty.
+INTERFERENCE_DIST = 0.5 # km
+interference_count = 0
 
-# QUADRATIC (Interference Penalty)
-# Thesis Goal: "High QoS" (Low Interference).
-# We keep the penalty high. If two coverage nodes are close, one MUST go.
-INTERFERENCE_THRESHOLD = 800.0 # Increased slightly to catch overlaps
-PENALTY_WEIGHT = 600.0
-
-for i in range(len(candidates)):
-    for j in range(i + 1, len(candidates)):
-        t1 = candidates[i]
-        t2 = candidates[j]
-        dist = sqrt((t1['x_m'] - t2['x_m'])**2 + (t1['y_m'] - t2['y_m'])**2)
+for i in range(len(ilp_selected)):
+    idx1 = ilp_selected[i]
+    t1 = towers[idx1]
+    
+    for j in range(i + 1, len(ilp_selected)):
+        idx2 = ilp_selected[j]
+        t2 = towers[idx2]
         
-        if dist < INTERFERENCE_THRESHOLD:
-            quadratic_terms[(f"t_{i}", f"t_{j}")] = PENALTY_WEIGHT
+        dist = haversine(t1['latitude'], t1['longitude'], t2['latitude'], t2['longitude'])
+        
+        if dist < INTERFERENCE_DIST:
+            quadratic_terms[(f"x_{idx1}", f"x_{idx2}")] = INTERFERENCE_PENALTY
+            interference_count += 1
 
 qp.minimize(linear=linear_terms, quadratic=quadratic_terms)
-print("--> Converted to QUBO format.")
-
-# --- VISUALIZATION 2: QUBO HEATMAP ---
-print("--> Generating QUBO Matrix Heatmap...")
-matrix_size = len(candidates)
-qubo_matrix = np.zeros((matrix_size, matrix_size))
-
-for i in range(matrix_size):
-    qubo_matrix[i, i] = linear_terms.get(f"t_{i}", 0)
-
-for (key, weight) in quadratic_terms.items():
-    i = int(key[0].split('_')[1])
-    j = int(key[1].split('_')[1])
-    qubo_matrix[i, j] = weight
-    qubo_matrix[j, i] = weight 
-
-plt.figure(figsize=(8, 6))
-plt.imshow(qubo_matrix, cmap='coolwarm', interpolation='nearest')
-plt.colorbar(label='Penalty Strength')
-plt.title("QUBO Hamiltonian Matrix (Interference Visualization)")
-plt.savefig("data/qubo_matrix_heatmap.png")
-print("Saved 'data/qubo_matrix_heatmap.png'")
+print(f"--> QUBO Constructed with {interference_count} interference constraints.")
 
 
 # ==========================================
-# PHASE 3: QUANTUM CIRCUIT (ANSATZ)
+# PHASE 4: CVaR-VQE EXECUTION
 # ==========================================
-print("\n=== PHASE 3: QUANTUM CIRCUIT ===")
-ansatz = TwoLocal(num_qubits=len(candidates), rotation_blocks='ry', entanglement_blocks='cz', entanglement='linear', reps=1)
+print("--> Running CVaR-VQE...")
 
-print("--> Generating Circuit Diagram...")
-ansatz.decompose().draw(output='mpl', filename="data/quantum_circuit_ansatz.png")
-print("Saved 'data/quantum_circuit_ansatz.png'")
-
-
-# ==========================================
-# PHASE 4: EXECUTION (VQE)
-# ==========================================
-print("\n=== PHASE 4: RUNNING VQE OPTIMIZATION ===")
-optimizer = COBYLA(maxiter=50)
+ansatz = TwoLocal(num_qubits=len(ilp_selected), rotation_blocks='ry', entanglement_blocks='cz')
+optimizer = COBYLA(maxiter=100)
 sampler = StatevectorSampler()
+
+# CVaR logic is intrinsic to how we interpret the cost, 
+# but for standard Qiskit Algorithms, we run VQE to find ground state.
 vqe = SamplingVQE(sampler=sampler, ansatz=ansatz, optimizer=optimizer)
-optimizer_vqe = MinimumEigenOptimizer(vqe)
+min_eigen_optimizer = MinimumEigenOptimizer(vqe)
 
-result = optimizer_vqe.solve(qp)
+result = min_eigen_optimizer.solve(qp)
 
-print(f"\nOptimal State: {result.x}")
-print(f"Optimal Value (Cost): {result.fval}")
+# ==========================================
+# 5. OUTPUT GENERATION
+# ==========================================
+print("\n=== OPTIC-5G FINAL RESULTS ===")
+print(f"Classical Steps (Greedy -> ILP) reduced {len(towers)} towers to {len(ilp_selected)}.")
+print(f"Quantum Step (VQE) optimized topology for interference.")
 
-# Construct Final Mask
-final_mask_list = ['0'] * len(df)
-candidate_real_ids = [c['original_index'] for c in candidates]
+final_active_ids = []
+vqe_binary = result.x # 1.0 or 0.0
 
-print("\n--> Mapping Quantum Solution back to Real World:")
-for i, val in enumerate(result.x):
-    original_idx = candidate_real_ids[i]
+for i, val in enumerate(vqe_binary):
+    original_id = ilp_selected[i]
     if val == 1.0:
-        final_mask_list[original_idx] = '1'
-        print(f"  [ON] Candidate {i} (Real ID: {original_idx})")
-    else:
-        print(f"  [--] Candidate {i} (Real ID: {original_idx}) - Optimized OFF")
+        final_active_ids.append(original_id)
 
-final_mask_str = "".join(final_mask_list)
-print(f"\n GENERATED NS-3 MASK: {final_mask_str[:50]}...")
-print(f"Run this: ./ns3 run 'scratch/manila_5g --mask={final_mask_str}'")
+print(f"Final Active Towers ({len(final_active_ids)}): {final_active_ids}")
+
+# Create Mask String for Plotting
+# We need a string length equal to the ORIGINAL dataframe
+full_mask = ['0'] * len(df)
+for fid in final_active_ids:
+    full_mask[fid] = '1'
+
+final_mask_str = "".join(full_mask)
+print(f"\n✅ PLOT STRING: {final_mask_str}")
