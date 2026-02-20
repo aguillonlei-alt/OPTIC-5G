@@ -1,236 +1,177 @@
 import pandas as pd
 import numpy as np
-from math import sqrt
-import pulp  # The classical ILP solver
+import matplotlib.pyplot as plt
+from math import sqrt, exp
+import random
+import os
 
-# Qiskit Imports for Phase 3
-from qiskit.circuit.library import TwoLocal
-from qiskit_algorithms import SamplingVQE
-from qiskit_algorithms.optimizers import COBYLA
-from qiskit.primitives import StatevectorSampler
 from qiskit_optimization import QuadraticProgram
-from qiskit_optimization.algorithms import MinimumEigenOptimizer
 
 # ==========================================
 # CONFIGURATION
 # ==========================================
-FILE_PATH = "data/manila_towers_geocoded_fixed.csv"
+MASK_FILENAME = "optimized_mask.txt"
+FORCE_RERUN = True  # <--- I SET THIS TO TRUE SO IT RE-CALCULATES AUTOMATICALLY
 
-# 1. Coverage Parameters (for Greedy/ILP)
-COVERAGE_RADIUS_KM = 1.0  # Assumed 5G Small Cell/Macro radius
-GRID_RESOLUTION = 20      # 20x20 grid points to simulate user demand
-
-# 2. Constraints
-MIN_COVERAGE_PCT = 0.95   # We want 95% of the campus covered
-
-# 3. Quantum Parameters
-INTERFERENCE_PENALTY = 500.0
+print("\n=== OPTIC-5G: HYBRID OPTIMIZATION (TUNED FOR HIGHER SINR) ====")
 
 # ==========================================
-# 0. HELPER FUNCTIONS
+# PHASE 1: DATA LOADING & GREEDY SELECTION
 # ==========================================
-def haversine(lat1, lon1, lat2, lon2):
-    """Calculates distance in km between two lat/lon points."""
-    R = 6371  # Earth radius in km
-    phi1, phi2 = np.radians(lat1), np.radians(lat2)
-    dphi = np.radians(lat2 - lat1)
-    dlambda = np.radians(lon2 - lon1)
-    a = np.sin(dphi/2)**2 + np.cos(phi1)*np.cos(phi2) * np.sin(dlambda/2)**2
-    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
-    return R * c
+try:
+    df = pd.read_csv("data/real_towers_ns3.csv")
+    print(f"--> Loaded {len(df)} total towers.")
+except FileNotFoundError:
+    print("❌ Error: 'data/real_towers_ns3.csv' not found.")
+    exit()
 
-# ==========================================
-# PHASE 1: PRE-PROCESSING & GREEDY FILTERING
-# ==========================================
-print("\n=== PHASE 1: CLASSICAL GREEDY FILTERING ===")
+# Manual Blacklist
+MANUAL_BLACKLIST = [2, 185] 
 
-# 1. Load Data
-df = pd.read_csv(FILE_PATH)
+all_towers = df.to_dict('records')
+valid_towers = []
 
-# 2. Sea Filter (From previous step)
-df = df[df['longitude'] > 120.965].copy().reset_index(drop=True)
-towers = df[['latitude', 'longitude']].to_dict('records')
-print(f"--> Valid Land Towers: {len(towers)}")
+for idx, t in enumerate(all_towers):
+    t['original_index'] = int(idx)
+    if 'txpower_dbm' not in t: t['txpower_dbm'] = 46.0
+    if t['original_index'] in MANUAL_BLACKLIST: continue 
+    valid_towers.append(t)
 
-# 3. Generate User Demand Grid (Simulating Campus Users)
-# We create a grid of points over the tower area to check coverage
-lat_min, lat_max = df['latitude'].min(), df['latitude'].max()
-lon_min, lon_max = df['longitude'].min(), df['longitude'].max()
+# Density Calculation
+DENSITY_RADIUS = 1000.0
+for t in valid_towers:
+    neighbor_count = 0
+    for other in valid_towers:
+        if t == other: continue
+        dist = sqrt((t['x_m'] - other['x_m'])**2 + (t['y_m'] - other['y_m'])**2)
+        if dist < DENSITY_RADIUS:
+            neighbor_count += 1
+    t['density_score'] = neighbor_count
 
-user_points = []
-lat_steps = np.linspace(lat_min, lat_max, GRID_RESOLUTION)
-lon_steps = np.linspace(lon_min, lon_max, GRID_RESOLUTION)
+# Greedy Filtering
+# INCREASED LIMIT slightly to give solver more options
+CANDIDATE_LIMIT = 28  
+MIN_SEPARATION = 300.0 
 
-for lat in lat_steps:
-    for lon in lon_steps:
-        user_points.append({'lat': lat, 'lon': lon, 'covered': False})
+sorted_towers = sorted(valid_towers, key=lambda x: x['density_score'], reverse=True)
+candidates = []
+candidate_indices = []
 
-print(f"--> Generated {len(user_points)} demand points for coverage verification.")
+print(f"--> Running Greedy Selection for {CANDIDATE_LIMIT} towers...")
 
-# 4. Greedy Algorithm
-# Goal: Pick towers one by one that cover the MOST uncovered points until satisfied.
-greedy_candidates = []
-covered_indices = set()
-
-print("--> Running Greedy Selection...")
-while len(covered_indices) < len(user_points) * MIN_COVERAGE_PCT:
-    best_tower_idx = -1
-    best_new_cover = set()
-    
-    # Check every tower
-    for idx, tower in enumerate(towers):
-        if idx in greedy_candidates: continue # Skip if already picked
-        
-        # Calculate who this tower covers
-        current_cover = set()
-        for u_idx, user in enumerate(user_points):
-            if u_idx not in covered_indices:
-                dist = haversine(tower['latitude'], tower['longitude'], user['lat'], user['lon'])
-                if dist <= COVERAGE_RADIUS_KM:
-                    current_cover.add(u_idx)
-        
-        # Is this the best so far?
-        if len(current_cover) > len(best_new_cover):
-            best_new_cover = current_cover
-            best_tower_idx = idx
-            
-    # Stop if no tower adds value
-    if best_tower_idx == -1 or len(best_new_cover) == 0:
+for tower in sorted_towers:
+    if len(candidates) >= CANDIDATE_LIMIT:
         break
-        
-    greedy_candidates.append(best_tower_idx)
-    covered_indices.update(best_new_cover)
+    is_far_enough = True
+    for selected in candidates:
+        dist = sqrt((tower['x_m'] - selected['x_m'])**2 + (tower['y_m'] - selected['y_m'])**2)
+        if dist < MIN_SEPARATION:
+            is_far_enough = False
+            break
+    if is_far_enough:
+        candidates.append(tower)
+        candidate_indices.append(tower['original_index'])
 
-print(f"--> Greedy Selected {len(greedy_candidates)} candidates providing {len(covered_indices)/len(user_points)*100:.1f}% coverage.")
-print(f"--> Candidate IDs: {greedy_candidates}")
-
-
-# ==========================================
-# PHASE 2: CLASSICAL ILP OPTIMIZATION
-# ==========================================
-print("\n=== PHASE 2: ILP OPTIMIZATION (PuLP) ===")
-# Input: The candidates from Greedy (Refining the selection)
-# Objective: Minimize Number of Towers
-# Constraint: Ensure all currently covered points remain covered
-
-prob = pulp.LpProblem("OPTIC5G_BaseStation_Placement", pulp.LpMinimize)
-
-# Variables: Binary (1 if tower active, 0 if inactive)
-tower_vars = {i: pulp.LpVariable(f"T_{i}", cat='Binary') for i in greedy_candidates}
-
-# Objective Function: Minimize Sum of Active Towers
-prob += pulp.lpSum([tower_vars[i] for i in greedy_candidates])
-
-# Constraints: Every user point covered by Greedy must be covered by at least 1 ILP tower
-# Pre-calculate coverage matrix to speed up
-coverage_map = {u: [] for u in covered_indices} # Map User -> List of covering towers
-
-for t_idx in greedy_candidates:
-    tower = towers[t_idx]
-    for u_idx in covered_indices:
-        user = user_points[u_idx]
-        dist = haversine(tower['latitude'], tower['longitude'], user['lat'], user['lon'])
-        if dist <= COVERAGE_RADIUS_KM:
-            coverage_map[u_idx].append(tower_vars[t_idx])
-
-# Add constraints to ILP
-for u_idx, covering_towers in coverage_map.items():
-    if covering_towers:
-        prob += pulp.lpSum(covering_towers) >= 1
-
-# Solve
-prob.solve(pulp.PULP_CBC_CMD(msg=0)) # msg=0 turns off verbose solver logs
-
-ilp_selected = []
-for i in greedy_candidates:
-    if pulp.value(tower_vars[i]) == 1:
-        ilp_selected.append(i)
-
-print(f"--> ILP Optimized Candidates: {len(ilp_selected)} (Reduced from {len(greedy_candidates)})")
-print(f"--> ILP IDs: {ilp_selected}")
-
+print(f"--> Selection Complete: {len(candidates)} Candidates Chosen.")
 
 # ==========================================
-# PHASE 3: QUBO FORMULATION
+# PHASE 2: QUBO FORMULATION (TUNED)
 # ==========================================
-print("\n=== PHASE 3: QUANTUM REFINEMENT (QUBO + CVaR) ===")
-# We take the ILP result and run it through Quantum to handle INTERFERENCE/RISK
-# which ILP handles poorly (Quadratic constraints are hard for standard ILP).
+print("\n=== PHASE 2: QUBO FORMULATION ===")
 
 qp = QuadraticProgram()
-# Create variables only for the ILP survivors
-for idx in ilp_selected:
-    qp.binary_var(name=f"x_{idx}")
+for i in range(len(candidates)):
+    qp.binary_var(name=f"t_{i}")
 
 linear_terms = {}
 quadratic_terms = {}
 
-# A. Linear Terms (Activation Cost vs Coverage Reward)
-# In this phase, we balance Power vs Risk.
-for idx in ilp_selected:
-    linear_terms[f"x_{idx}"] = -100.0  # Reward for keeping a robust tower ON
+# --- TUNING PARAMETERS (THE FIX) ---
+# OLD: Reward=250, Penalty=200 --> Resulted in only 13 towers (Too sparse)
+# NEW: Reward=1800, Penalty=600 --> Should target ~18-22 towers (Sweet Spot)
+COVERAGE_REWARD = 1800.0 
+INTERFERENCE_THRESHOLD = 1000.0 # Only penalize if VERY close
+PENALTY_WEIGHT = 600.0
 
-# B. Quadratic Terms (Interference Penalty)
-# If two towers are too close, add penalty.
-INTERFERENCE_DIST = 0.5 # km
-interference_count = 0
+# Linear (Rewards)
+for i in range(len(candidates)):
+    # Reward is high, cost (TxPower) is low. Net positive to turn ON.
+    cost = candidates[i]['txpower_dbm'] - COVERAGE_REWARD
+    linear_terms[f"t_{i}"] = cost
 
-for i in range(len(ilp_selected)):
-    idx1 = ilp_selected[i]
-    t1 = towers[idx1]
-    
-    for j in range(i + 1, len(ilp_selected)):
-        idx2 = ilp_selected[j]
-        t2 = towers[idx2]
+# Quadratic (Penalties)
+for i in range(len(candidates)):
+    for j in range(i + 1, len(candidates)):
+        t1 = candidates[i]
+        t2 = candidates[j]
+        dist = sqrt((t1['x_m'] - t2['x_m'])**2 + (t1['y_m'] - t2['y_m'])**2)
         
-        dist = haversine(t1['latitude'], t1['longitude'], t2['latitude'], t2['longitude'])
-        
-        if dist < INTERFERENCE_DIST:
-            quadratic_terms[(f"x_{idx1}", f"x_{idx2}")] = INTERFERENCE_PENALTY
-            interference_count += 1
+        if dist < INTERFERENCE_THRESHOLD:
+            quadratic_terms[(f"t_{i}", f"t_{j}")] = PENALTY_WEIGHT
 
 qp.minimize(linear=linear_terms, quadratic=quadratic_terms)
-print(f"--> QUBO Constructed with {interference_count} interference constraints.")
-
 
 # ==========================================
-# PHASE 4: CVaR-VQE EXECUTION
+# PHASE 3: SOLVER (Simulated Annealing)
 # ==========================================
-print("--> Running CVaR-VQE...")
+print("\n=== PHASE 3: SOLVER (Simulated Annealing) ===")
 
-ansatz = TwoLocal(num_qubits=len(ilp_selected), rotation_blocks='ry', entanglement_blocks='cz')
-optimizer = COBYLA(maxiter=100)
-sampler = StatevectorSampler()
+def get_qubo_energy(solution_vec):
+    energy = 0
+    for i in range(len(solution_vec)):
+        if solution_vec[i] == 1:
+            energy += linear_terms.get(f"t_{i}", 0)
+    for (key, weight) in quadratic_terms.items():
+        i, j = int(key[0].split('_')[1]), int(key[1].split('_')[1])
+        if solution_vec[i] == 1 and solution_vec[j] == 1:
+            energy += weight
+    return energy
 
-# CVaR logic is intrinsic to how we interpret the cost, 
-# but for standard Qiskit Algorithms, we run VQE to find ground state.
-vqe = SamplingVQE(sampler=sampler, ansatz=ansatz, optimizer=optimizer)
-min_eigen_optimizer = MinimumEigenOptimizer(vqe)
+iterations = 8000 # Increased iterations for better convergence
+temperature = 150.0
+cooling_rate = 0.99
 
-result = min_eigen_optimizer.solve(qp)
+current_solution = [random.randint(0, 1) for _ in range(len(candidates))]
+current_energy = get_qubo_energy(current_solution)
+best_solution = list(current_solution)
+best_energy = current_energy
+
+for k in range(iterations):
+    idx = random.randint(0, len(candidates)-1)
+    new_solution = list(current_solution)
+    new_solution[idx] = 1 - new_solution[idx] 
+    
+    new_energy = get_qubo_energy(new_solution)
+    delta = new_energy - current_energy
+    
+    if delta < 0 or random.random() < exp(-delta / temperature):
+        current_solution = new_solution
+        current_energy = new_energy
+        if current_energy < best_energy:
+            best_energy = current_energy
+            best_solution = list(current_solution)
+    temperature *= cooling_rate
 
 # ==========================================
-# 5. OUTPUT GENERATION
+# PHASE 4: OUTPUT
 # ==========================================
-print("\n=== OPTIC-5G FINAL RESULTS ===")
-print(f"Classical Steps (Greedy -> ILP) reduced {len(towers)} towers to {len(ilp_selected)}.")
-print(f"Quantum Step (VQE) optimized topology for interference.")
+final_mask_list = ['0'] * len(df)
+candidate_real_ids = [c['original_index'] for c in candidates]
 
-final_active_ids = []
-vqe_binary = result.x # 1.0 or 0.0
+active_count = 0
+for i, val in enumerate(best_solution):
+    original_idx = candidate_real_ids[i]
+    if val == 1:
+        final_mask_list[original_idx] = '1'
+        active_count += 1
 
-for i, val in enumerate(vqe_binary):
-    original_id = ilp_selected[i]
-    if val == 1.0:
-        final_active_ids.append(original_id)
+final_mask_str = "".join(final_mask_list)
 
-print(f"Final Active Towers ({len(final_active_ids)}): {final_active_ids}")
+with open(MASK_FILENAME, "w") as f:
+    f.write(final_mask_str)
 
-# Create Mask String for Plotting
-# We need a string length equal to the ORIGINAL dataframe
-full_mask = ['0'] * len(df)
-for fid in final_active_ids:
-    full_mask[fid] = '1'
-
-final_mask_str = "".join(full_mask)
-print(f"\n✅ PLOT STRING: {final_mask_str}")
+print(f"\n✅ GENERATED NEW TUNED MASK ({active_count} Active):")
+print(f"Goal: Should be roughly 18-24 towers for balanced SINR.")
+print(f"Mask: {final_mask_str}")
+print(f"\n🚀 TO RUN SIMULATION:")
+print(f"./ns3 run 'scratch/manila_5g --mask={final_mask_str}'")
