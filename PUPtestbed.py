@@ -5,6 +5,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 import time
 from datetime import datetime
+import os # Added to dynamically find your Downloads folder!
 
 # ==========================================
 # 1. OPTIC-5G HARDWARE & SPATIAL MAPPING
@@ -15,7 +16,7 @@ ROUTER_IPS = [
     "192.168.1.252", # Index 2  (Sim R2):  Physical R9  <-- WARNING: DUPLICATE IP
     "192.168.1.250", # Index 3  (Sim R3):  Physical R8
     "192.168.1.248", # Index 4  (Sim R4):  Physical R7
-    "192.168.1.246", # Index 5  (Sim R5):  Physical R6  (Cleaned trailing space)
+    "192.168.1.246", # Index 5  (Sim R5):  Physical R6  
     "192.168.1.247", # Index 6  (Sim R6):  Physical R5
     "192.168.1.241", # Index 7  (Sim R7):  Physical R12
     "192.168.1.243", # Index 8  (Sim R8):  Physical R13
@@ -34,14 +35,14 @@ USERNAME = "OPTIC5G"
 PASSWORD = "bseceoptic5g"
 
 # Paste your exact 17-digit mask from the quantum simulation here!
-QUANTUM_MASK = "11111111111111111" 
+QUANTUM_MASK = "11111111111111111"
 
 # ==========================================
 # 2. SELENIUM CONFIGURATION
 # ==========================================
 def setup_driver():
     chrome_options = Options()
-    chrome_options.add_argument("--ignore-certificate-errors") # Bypass HTTPS privacy warning
+    chrome_options.add_argument("--ignore-certificate-errors") 
     chrome_options.add_argument("--incognito")
     return webdriver.Chrome(options=chrome_options)
 
@@ -56,27 +57,33 @@ def apply_quantum_mask_and_gather_data():
     driver = setup_driver()
     wait = WebDriverWait(driver, 10)
 
+    # --- THE MAGIC DOWNLOADS PATH ---
+    # This automatically finds your Windows Downloads folder and creates a CSV file
+    downloads_folder = os.path.join(os.path.expanduser('~'), 'Downloads')
+    file_path = os.path.join(downloads_folder, 'OPTIC5G_RF_Data.csv')
+    
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open("OPTIC5G_RF_Data.txt", "a") as log_file:
-        log_file.write(f"\n=====================================\n")
-        log_file.write(f"TEST RUN: {timestamp}\n")
-        log_file.write(f"APPLIED MASK: {QUANTUM_MASK}\n")
-        log_file.write(f"=====================================\n")
+    
+    # We use "a" to append, so it doesn't delete your old data if you run the script twice
+    with open(file_path, "a") as log_file:
+        # Write the CSV Headers
+        log_file.write(f"\nTest Run:,{timestamp},Mask:,{QUANTUM_MASK}\n")
+        log_file.write("Router Label,IP Address,SNR,Noise,Radio Target\n")
 
         for i in range(len(QUANTUM_MASK)):
             target_ip = ROUTER_IPS[i]
             target_state = QUANTUM_MASK[i]
-            router_label = f"Sim Index {i}"
+            router_label = f"Sim_Index_{i}" # Swapped space for underscore to keep CSV super clean
             
             if target_ip == "SKIP":
-                log_file.write(f"{router_label} | NOT DEPLOYED | Skipping\n")
+                log_file.write(f"{router_label},NOT DEPLOYED,N/A,N/A,Skipping\n")
                 print(f"[{router_label}] Physical router NOT DEPLOYED. Skipping.")
                 continue 
 
             print(f"\n[{router_label}] Accessing {target_ip}...")
 
             try:
-                # 1. Navigate and Log In (VERIFY THESE HTML IDs)
+                # 1. Navigate and Log In 
                 driver.get(f"https://{target_ip}")
                 wait.until(EC.presence_of_element_located((By.ID, "username"))).send_keys(USERNAME)
                 driver.find_element(By.ID, "password").send_keys(PASSWORD)
@@ -87,13 +94,16 @@ def apply_quantum_mask_and_gather_data():
                 # ==========================================
                 print(f"   -> Scraping RF Data from Status Tab...")
                 
-                # I plugged in your exact SNR XPath here!
+                # SNR XPath is locked in
                 snr_value = wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/div/div[3]/div/div[4]/div/div[2]/div[2]/div/div/div[3]/div[2]/div[2]/div[1]/span[2]/pre"))).text
                 
-                # We still need the XPath or ID for Noise Strength!
+                # TODO: You MUST replace this filler with the real Noise XPath!
                 noise_value = driver.find_element(By.XPATH, "PASTE_NOISE_XPATH_HERE").text
 
-                data_string = f"{router_label} ({target_ip}) | SNR: {snr_value} | Noise: {noise_value} | Target Radio: {'ON' if target_state == '1' else 'OFF'}\n"
+                # Format as comma-separated values
+                radio_text = 'ON' if target_state == '1' else 'OFF'
+                data_string = f"{router_label},{target_ip},{snr_value},{noise_value},{radio_text}\n"
+                
                 log_file.write(data_string)
                 print(f"   -> [DATA SAVED] SNR: {snr_value} | Noise: {noise_value}")
 
@@ -104,10 +114,10 @@ def apply_quantum_mask_and_gather_data():
                     print(f"   -> [ARMOR ACTIVE] Cannot turn off the Access Point. Leaving Radio ON.")
                     continue 
 
-                # Click to Wireless Tab (VERIFY THIS HTML ID)
+                # Click to Wireless Tab 
                 wait.until(EC.element_to_be_clickable((By.ID, "menu-wireless"))).click() 
                 
-                # Check Radio box status (VERIFY THIS HTML ID)
+                # Check Radio box status 
                 radio_checkbox = wait.until(EC.presence_of_element_located((By.ID, "enable-radio-checkbox"))) 
                 is_checked = radio_checkbox.is_selected()
 
@@ -120,18 +130,18 @@ def apply_quantum_mask_and_gather_data():
                 else:
                     print(f"   -> [ACTION] Radio already in correct state.")
 
-                # Apply and Save (VERIFY THESE HTML IDs)
+                # Apply and Save 
                 driver.find_element(By.ID, "apply-btn").click()
                 time.sleep(2) 
                 driver.find_element(By.ID, "save-config-btn").click() 
                 time.sleep(3) 
 
             except Exception as e:
-                error_msg = f"{router_label} ({target_ip}) | ERROR: Could not connect or find elements.\n"
+                error_msg = f"{router_label},{target_ip},ERROR,ERROR,Connection Failed\n"
                 log_file.write(error_msg)
-                print(f"   -> [FAILED] {error_msg}")
+                print(f"   -> [FAILED] Could not connect or find elements.")
 
-    print("\n[COMPLETE] RF Data saved to 'OPTIC5G_RF_Data.txt' and topology optimized!")
+    print(f"\n[COMPLETE] Data saved directly to: {file_path}")
     driver.quit()
 
 if __name__ == "__main__":
