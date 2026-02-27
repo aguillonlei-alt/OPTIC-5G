@@ -11,6 +11,7 @@ import os
 # ==========================================
 # 1. OPTIC-5G HARDWARE & SPATIAL MAPPING
 # ==========================================
+# Verify these match your physical router layout!
 ROUTER_IPS = [
     "192.168.1.253", # Index 0 (Sim R0): Physical R11 [ACCESS POINT]
     "192.168.1.242", # Index 1 (Sim R1): Physical R10
@@ -86,16 +87,20 @@ def apply_quantum_mask_and_gather_data():
                 # ==========================================
                 # PHASE 1: DATA GATHERING (STATUS TAB)
                 # ==========================================
-                print(f"   -> Waiting for Status page elements to load...")
-                time.sleep(6) # Essential: Gives the router time to calculate live RF data
+                print(f"   -> Waiting for live RF load...")
+                time.sleep(7) # Increased to ensure Signal numbers populate
                 
-                signal_value = wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/div/div[3]/div/div[4]/div/div[2]/div[2]/div/div/div[1]/div[1]/div[2]/div[1]/span[2]/pre"))).text
-                noise_value = wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/div/div[3]/div/div[4]/div/div[2]/div[2]/div/div/div[2]/div[2]/div[2]/div[1]/span[2]/pre"))).text
-                snr_value = wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/div/div[3]/div/div[4]/div/div[2]/div[2]/div/div/div[3]/div[2]/div[2]/div[1]/span[2]/pre"))).text
+                signal_xpath = "/html/body/div[1]/div/div[3]/div/div[4]/div/div[2]/div[2]/div/div/div[1]/div[1]/div[2]/div[1]/span[2]/pre"
+                noise_xpath = "/html/body/div[1]/div/div[3]/div/div[4]/div/div[2]/div[2]/div/div/div[2]/div[2]/div[2]/div[1]/span[2]/pre"
+                snr_xpath = "/html/body/div[1]/div/div[3]/div/div[4]/div/div[2]/div[2]/div/div/div[3]/div[2]/div[2]/div[1]/span[2]/pre"
+
+                signal_value = wait.until(EC.presence_of_element_located((By.XPATH, signal_xpath))).text
+                noise_value = wait.until(EC.presence_of_element_located((By.XPATH, noise_xpath))).text
+                snr_value = wait.until(EC.presence_of_element_located((By.XPATH, snr_xpath))).text
 
                 radio_text = 'ON' if target_state == '1' else 'OFF'
                 log_file.write(f"{router_label},{target_ip},{signal_value},{noise_value},{snr_value},{radio_text}\n")
-                print(f"   -> [DATA SAVED] Signal: {signal_value} | SNR: {snr_value}")
+                print(f"   -> [DATA SAVED] SNR: {snr_value}")
 
                 # ==========================================
                 # PHASE 2: MASK APPLICATION (WIRELESS TAB)
@@ -104,16 +109,23 @@ def apply_quantum_mask_and_gather_data():
                     print(f"   -> [ARMOR ACTIVE] Access Point must stay ON.")
                     continue 
 
-                # STALL FIX: Pause to let the sidebar menu initialize
                 print(f"   -> Transitioning to Wireless settings...")
-                time.sleep(2) 
+                time.sleep(3) # Let the sidebar settle
+
+                # Double-Targeting XPath for the Wireless link
+                try:
+                    wireless_tab = wait.until(EC.presence_of_element_located((By.XPATH, "//a[contains(@class, 'nav-item') and contains(., 'Wireless')]")))
+                except:
+                    wireless_tab = wait.until(EC.presence_of_element_located((By.PARTIAL_LINK_TEXT, "Wireless")))
                 
-                # Use PARTIAL_LINK_TEXT to bypass any hidden characters in the menu links
-                wireless_tab = wait.until(EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, "Wireless")))
+                # JS Click to bypass UI stalls
                 driver.execute_script("arguments[0].click();", wireless_tab)
                 
-                # Wait for the Radio Checkbox to render on the new page
-                radio_checkbox = wait.until(EC.presence_of_element_located((By.XPATH, "//input[contains(@id, 'wl-ap-enable-checkbox')]"))) 
+                print(f"   -> Waiting for Wireless page render...")
+                time.sleep(5) # Crucial wait for the checkbox widget to load
+                
+                # Manage Radio Checkbox using dynamic ID bypass
+                radio_checkbox = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@type='checkbox' and contains(@id, 'wl-ap-enable-checkbox')]"))) 
                 is_checked = radio_checkbox.is_selected()
 
                 if target_state == '0' and is_checked:
@@ -123,17 +135,17 @@ def apply_quantum_mask_and_gather_data():
                     driver.execute_script("arguments[0].click();", radio_checkbox)
                     print(f"   -> [ACTION] Radio Enabled.")
 
-                # Click Apply using the span text confirmed in your F12 screenshot
-                apply_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//span[text()='Apply']")))
+                # Final Apply
+                apply_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//span[contains(text(), 'Apply')]")))
                 driver.execute_script("arguments[0].click();", apply_btn)
                 print(f"   -> [SUCCESS] Settings applied to {target_ip}")
-                time.sleep(3) 
+                time.sleep(4)
 
             except Exception as e:
-                log_file.write(f"{router_label},{target_ip},ERROR,ERROR,ERROR,Transition Failed\n")
-                print(f"   -> [FAILED] Could not move past Status Tab. Error: {e}")
+                log_file.write(f"{router_label},{target_ip},ERROR,ERROR,ERROR,Failed\n")
+                print(f"   -> [FAILED] Error occurred at {target_ip}: {e}")
 
-    print(f"\n[COMPLETE] Results: {file_path}")
+    print(f"\n[COMPLETE] Results saved to: {file_path}")
     driver.quit()
 
 if __name__ == "__main__":
