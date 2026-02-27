@@ -97,6 +97,9 @@ def apply_quantum_mask_and_gather_data():
                 # ==========================================
                 # PHASE 1: AUTOMATED DATA GATHERING
                 # ==========================================
+                print(f"   -> Waiting for Router to load live RF metrics...")
+                time.sleep(4) # <-- NEW: Gives the router 4 seconds to load the Signal numbers!
+                
                 print(f"   -> Scraping RF Data from Status Tab...")
                 
                 # 1. Signal Strength
@@ -114,6 +117,39 @@ def apply_quantum_mask_and_gather_data():
                 
                 log_file.write(data_string)
                 print(f"   -> [DATA SAVED] Signal: {signal_value} | Noise: {noise_value} | SNR: {snr_value}")
+
+                # ==========================================
+                # PHASE 2: EXECUTION & MASK APPLICATION
+                # ==========================================
+                # NOTE: If your Main AP is 192.168.1.253 now, change the IP below!
+                if target_ip == "192.168.1.254" and target_state == '0':
+                    print(f"   -> [ARMOR ACTIVE] Cannot turn off the Access Point. Leaving Radio ON.")
+                    continue 
+
+                # Click to Wireless Tab (Upgraded with 'contains' and a forced JS click!)
+                wireless_tab = wait.until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Wireless')]")))
+                driver.execute_script("arguments[0].click();", wireless_tab)
+                time.sleep(2) # Give the Wireless tab time to load
+                
+                # Check Radio box status 
+                radio_checkbox = wait.until(EC.presence_of_element_located((By.XPATH, "//input[contains(@id, 'wl-ap-enable-checkbox')]"))) 
+                is_checked = radio_checkbox.is_selected()
+
+                # JavaScript Click to bypass UI overlays
+                if target_state == '0' and is_checked:
+                    driver.execute_script("arguments[0].click();", radio_checkbox)
+                    print(f"   -> [ACTION] Radio Disabled. Interference cleared.")
+                elif target_state == '1' and not is_checked:
+                    driver.execute_script("arguments[0].click();", radio_checkbox)
+                    print(f"   -> [ACTION] Radio Enabled. Beam active.")
+                else:
+                    print(f"   -> [ACTION] Radio already in correct state.")
+
+                # Apply and Save 
+                driver.find_element(By.XPATH, "//span[text()='Apply']").click()
+                time.sleep(2) 
+                driver.find_element(By.XPATH, "//span[text()='Save']").click() 
+                time.sleep(3)
 
                 # ==========================================
                 # PHASE 2: EXECUTION & MASK APPLICATION
