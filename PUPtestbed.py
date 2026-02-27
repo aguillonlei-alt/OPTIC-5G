@@ -5,7 +5,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 import time
 from datetime import datetime
-import os # Added to dynamically find your Downloads folder!
+import os 
 
 # ==========================================
 # 1. OPTIC-5G HARDWARE & SPATIAL MAPPING
@@ -64,9 +64,9 @@ def apply_quantum_mask_and_gather_data():
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     with open(file_path, "a") as log_file:
-        # Write the CSV Headers
+        # Write the CSV Headers (Updated to include Signal, Noise, and SNR)
         log_file.write(f"\nTest Run:,{timestamp},Mask:,{QUANTUM_MASK}\n")
-        log_file.write("Router Label,IP Address,SNR,Noise,Radio Target\n")
+        log_file.write("Router Label,IP Address,Signal,Noise,SNR,Radio Target\n")
 
         for i in range(len(QUANTUM_MASK)):
             target_ip = ROUTER_IPS[i]
@@ -74,7 +74,7 @@ def apply_quantum_mask_and_gather_data():
             router_label = f"Sim_Index_{i}" 
             
             if target_ip == "SKIP":
-                log_file.write(f"{router_label},NOT DEPLOYED,N/A,N/A,Skipping\n")
+                log_file.write(f"{router_label},NOT DEPLOYED,N/A,N/A,N/A,Skipping\n")
                 print(f"[{router_label}] Physical router NOT DEPLOYED. Skipping.")
                 continue 
 
@@ -92,18 +92,21 @@ def apply_quantum_mask_and_gather_data():
                 # ==========================================
                 print(f"   -> Scraping RF Data from Status Tab...")
                 
-                # SNR XPath
-                snr_value = wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/div/div[3]/div/div[4]/div/div[2]/div[2]/div/div/div[3]/div[2]/div[2]/div[1]/span[2]/pre"))).text
+                # 1. Signal Strength
+                signal_value = wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/div/div[3]/div/div[4]/div/div[2]/div[2]/div/div/div[1]/div[1]/div[2]/div[1]/span[2]/pre"))).text
                 
-                # NEW: Noise Strength XPath!
-                noise_value = wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/div/div[3]/div/div[4]/div/div[2]/div[2]/div/div/div[1]/div[1]/div[2]/div[1]/span[2]/pre"))).text
+                # 2. Noise Strength
+                noise_value = wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/div/div[3]/div/div[4]/div/div[2]/div[2]/div/div/div[2]/div[2]/div[2]/div[1]/span[2]/pre"))).text
+
+                # 3. SNR
+                snr_value = wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/div/div[3]/div/div[4]/div/div[2]/div[2]/div/div/div[3]/div[2]/div[2]/div[1]/span[2]/pre"))).text
 
                 # Format as comma-separated values
                 radio_text = 'ON' if target_state == '1' else 'OFF'
-                data_string = f"{router_label},{target_ip},{snr_value},{noise_value},{radio_text}\n"
+                data_string = f"{router_label},{target_ip},{signal_value},{noise_value},{snr_value},{radio_text}\n"
                 
                 log_file.write(data_string)
-                print(f"   -> [DATA SAVED] SNR: {snr_value} | Noise: {noise_value}")
+                print(f"   -> [DATA SAVED] Signal: {signal_value} | Noise: {noise_value} | SNR: {snr_value}")
 
                 # ==========================================
                 # PHASE 2: EXECUTION & MASK APPLICATION
@@ -135,7 +138,8 @@ def apply_quantum_mask_and_gather_data():
                 time.sleep(3) 
 
             except Exception as e:
-                error_msg = f"{router_label},{target_ip},ERROR,ERROR,Connection Failed\n"
+                # Updated error logging to match the 6-column CSV layout
+                error_msg = f"{router_label},{target_ip},ERROR,ERROR,ERROR,Connection Failed\n"
                 log_file.write(error_msg)
                 print(f"   -> [FAILED] Could not connect or find elements.")
 
