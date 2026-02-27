@@ -3,6 +3,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.keys import Keys # <-- NEW: Keyboard bypass import
 import time
 from datetime import datetime
 import os 
@@ -10,6 +11,7 @@ import os
 # ==========================================
 # 1. OPTIC-5G HARDWARE & SPATIAL MAPPING
 # ==========================================
+# Note: Ensure this list matches your current physical IPs!
 ROUTER_IPS = [
     "192.168.1.254", # Index 0  (Sim R0):  Physical R11 [ACCESS POINT]
     "192.168.1.251", # Index 1  (Sim R1):  Physical R10
@@ -82,12 +84,15 @@ def apply_quantum_mask_and_gather_data():
 
             try:
                 # ==========================================
-                # 1. NAVIGATE AND LOG IN (Custom XPaths)
+                # 1. NAVIGATE AND LOG IN (The Enter-Key Bypass)
                 # ==========================================
                 driver.get(f"https://{target_ip}")
                 wait.until(EC.presence_of_element_located((By.XPATH, "//input[@type='text']"))).send_keys(USERNAME)
-                driver.find_element(By.XPATH, "//input[@type='password']").send_keys(PASSWORD)
-                driver.find_element(By.XPATH, "//span[text()='Login']").click() 
+                
+                # Find password box, type password, and hit ENTER!
+                pwd_box = driver.find_element(By.XPATH, "//input[@type='password']")
+                pwd_box.send_keys(PASSWORD)
+                pwd_box.send_keys(Keys.RETURN) 
 
                 # ==========================================
                 # PHASE 1: AUTOMATED DATA GATHERING
