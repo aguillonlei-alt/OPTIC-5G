@@ -58,13 +58,11 @@ def apply_quantum_mask_and_gather_data():
     wait = WebDriverWait(driver, 10)
 
     # --- THE MAGIC DOWNLOADS PATH ---
-    # This automatically finds your Windows Downloads folder and creates a CSV file
     downloads_folder = os.path.join(os.path.expanduser('~'), 'Downloads')
     file_path = os.path.join(downloads_folder, 'OPTIC5G_RF_Data.csv')
     
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    # We use "a" to append, so it doesn't delete your old data if you run the script twice
     with open(file_path, "a") as log_file:
         # Write the CSV Headers
         log_file.write(f"\nTest Run:,{timestamp},Mask:,{QUANTUM_MASK}\n")
@@ -73,7 +71,7 @@ def apply_quantum_mask_and_gather_data():
         for i in range(len(QUANTUM_MASK)):
             target_ip = ROUTER_IPS[i]
             target_state = QUANTUM_MASK[i]
-            router_label = f"Sim_Index_{i}" # Swapped space for underscore to keep CSV super clean
+            router_label = f"Sim_Index_{i}" 
             
             if target_ip == "SKIP":
                 log_file.write(f"{router_label},NOT DEPLOYED,N/A,N/A,Skipping\n")
@@ -94,11 +92,11 @@ def apply_quantum_mask_and_gather_data():
                 # ==========================================
                 print(f"   -> Scraping RF Data from Status Tab...")
                 
-                # SNR XPath is locked in
+                # SNR XPath
                 snr_value = wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/div/div[3]/div/div[4]/div/div[2]/div[2]/div/div/div[3]/div[2]/div[2]/div[1]/span[2]/pre"))).text
                 
-                # TODO: You MUST replace this filler with the real Noise XPath!
-                noise_value = driver.find_element(By.XPATH, "PASTE_NOISE_XPATH_HERE").text
+                # NEW: Noise Strength XPath!
+                noise_value = wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/div/div[3]/div/div[4]/div/div[2]/div[2]/div/div/div[1]/div[1]/div[2]/div[1]/span[2]/pre"))).text
 
                 # Format as comma-separated values
                 radio_text = 'ON' if target_state == '1' else 'OFF'
