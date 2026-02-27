@@ -3,7 +3,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.keys import Keys # <-- NEW: Keyboard bypass import
+from selenium.webdriver.common.keys import Keys
 import time
 from datetime import datetime
 import os 
@@ -11,32 +11,28 @@ import os
 # ==========================================
 # 1. OPTIC-5G HARDWARE & SPATIAL MAPPING
 # ==========================================
-# Note: Ensure this list matches your current physical IPs!
 ROUTER_IPS = [
-    "192.168.1.254", # Index 0  (Sim R0):  Physical R11 [ACCESS POINT]
-    "192.168.1.251", # Index 1  (Sim R1):  Physical R10
-    "192.168.1.252", # Index 2  (Sim R2):  Physical R9  <-- WARNING: DUPLICATE IP
-    "192.168.1.250", # Index 3  (Sim R3):  Physical R8
-    "192.168.1.248", # Index 4  (Sim R4):  Physical R7
-    "192.168.1.246", # Index 5  (Sim R5):  Physical R6  
-    "192.168.1.247", # Index 6  (Sim R6):  Physical R5
-    "192.168.1.241", # Index 7  (Sim R7):  Physical R12
-    "192.168.1.243", # Index 8  (Sim R8):  Physical R13
-    "192.168.1.252", # Index 9  (Sim R9):  Physical R0  <-- WARNING: DUPLICATE IP
-    "192.168.1.242", # Index 10 (Sim R10): Physical R1
-    "192.168.1.238", # Index 11 (Sim R11): Physical R2
-    "192.168.1.239", # Index 12 (Sim R12): Physical R3
+    "192.168.1.253", # Index 0 (Sim R0): Physical R11 [ACCESS POINT]
+    "192.168.1.242", # Index 1 (Sim R1): Physical R10
+    "192.168.1.238", # Index 2 (Sim R2): Physical R9  
+    "192.168.1.239", # Index 3 (Sim R3): Physical R8
+    "SKIP",          # Index 4 (Sim R4): Physical R7 [NOT DEPLOYED]
+    "192.168.1.247", # Index 5 (Sim R5): Physical R6  
+    "192.168.1.244", # Index 6 (Sim R6): Physical R5
+    "192.168.1.248", # Index 7 (Sim R7): Physical R12
+    "192.168.1.250", # Index 8 (Sim R8): Physical R13
+    "192.168.1.252", # Index 9 (Sim R9): Physical R0  
+    "192.168.1.241", # Index 10 (Sim R10): Physical R1
+    "192.168.1.243", # Index 11 (Sim R11): Physical R2
+    "192.168.1.253", # Index 12 (Sim R12): Physical R3
     "192.168.1.245", # Index 13 (Sim R13): Physical R14
-    "192.168.1.244", # Index 14 (Sim R14): Physical R16
+    "192.168.1.246", # Index 14 (Sim R14): Physical R16
     "192.168.1.240", # Index 15 (Sim R15): Physical R15
-    "SKIP"           # Index 16 (Sim R16): Physical R4 [NOT DEPLOYED]
+    "SKIP"           # Index 16 (Sim R16): Physical R4
 ]
 
-# TP-Link PharOS Login Credentials
 USERNAME = "OPTIC5G"
 PASSWORD = "bseceoptic5g"
-
-# Paste your exact 17-digit mask from the quantum simulation here!
 QUANTUM_MASK = "11111111111111111"
 
 # ==========================================
@@ -57,16 +53,13 @@ def apply_quantum_mask_and_gather_data():
         return
 
     driver = setup_driver()
-    wait = WebDriverWait(driver, 10)
+    wait = WebDriverWait(driver, 15)
 
-    # --- THE MAGIC DOWNLOADS PATH ---
     downloads_folder = os.path.join(os.path.expanduser('~'), 'Downloads')
     file_path = os.path.join(downloads_folder, 'OPTIC5G_RF_Data.csv')
-    
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     with open(file_path, "a") as log_file:
-        # Write the CSV Headers 
         log_file.write(f"\nTest Run:,{timestamp},Mask:,{QUANTUM_MASK}\n")
         log_file.write("Router Label,IP Address,Signal,Noise,SNR,Radio Target\n")
 
@@ -77,116 +70,67 @@ def apply_quantum_mask_and_gather_data():
             
             if target_ip == "SKIP":
                 log_file.write(f"{router_label},NOT DEPLOYED,N/A,N/A,N/A,Skipping\n")
-                print(f"[{router_label}] Physical router NOT DEPLOYED. Skipping.")
+                print(f"[{router_label}] Skipping.")
                 continue 
 
             print(f"\n[{router_label}] Accessing {target_ip}...")
 
             try:
-                # ==========================================
-                # 1. NAVIGATE AND LOG IN (The Enter-Key Bypass)
-                # ==========================================
+                # 1. NAVIGATE AND LOG IN (Enter-Key Bypass)
                 driver.get(f"https://{target_ip}")
                 wait.until(EC.presence_of_element_located((By.XPATH, "//input[@type='text']"))).send_keys(USERNAME)
-                
-                # Find password box, type password, and hit ENTER!
                 pwd_box = driver.find_element(By.XPATH, "//input[@type='password']")
                 pwd_box.send_keys(PASSWORD)
                 pwd_box.send_keys(Keys.RETURN) 
 
                 # ==========================================
-                # PHASE 1: AUTOMATED DATA GATHERING
+                # PHASE 1: DATA GATHERING
                 # ==========================================
-                print(f"   -> Waiting for Router to load live RF metrics...")
-                time.sleep(4) # <-- NEW: Gives the router 4 seconds to load the Signal numbers!
+                print(f"   -> Waiting for live RF load...")
+                time.sleep(5) # Crucial: Allows the router to populate Signal numbers
                 
-                print(f"   -> Scraping RF Data from Status Tab...")
-                
-                # 1. Signal Strength
                 signal_value = wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/div/div[3]/div/div[4]/div/div[2]/div[2]/div/div/div[1]/div[1]/div[2]/div[1]/span[2]/pre"))).text
-                
-                # 2. Noise Strength
                 noise_value = wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/div/div[3]/div/div[4]/div/div[2]/div[2]/div/div/div[2]/div[2]/div[2]/div[1]/span[2]/pre"))).text
-
-                # 3. SNR
                 snr_value = wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/div/div[3]/div/div[4]/div/div[2]/div[2]/div/div/div[3]/div[2]/div[2]/div[1]/span[2]/pre"))).text
 
-                # Format as comma-separated values
                 radio_text = 'ON' if target_state == '1' else 'OFF'
-                data_string = f"{router_label},{target_ip},{signal_value},{noise_value},{snr_value},{radio_text}\n"
-                
-                log_file.write(data_string)
-                print(f"   -> [DATA SAVED] Signal: {signal_value} | Noise: {noise_value} | SNR: {snr_value}")
+                log_file.write(f"{router_label},{target_ip},{signal_value},{noise_value},{snr_value},{radio_text}\n")
+                print(f"   -> [DATA SAVED] SNR: {snr_value}")
 
                 # ==========================================
-                # PHASE 2: EXECUTION & MASK APPLICATION
+                # PHASE 2: MASK APPLICATION
                 # ==========================================
-                # NOTE: If your Main AP is 192.168.1.253 now, change the IP below!
-                if target_ip == "192.168.1.254" and target_state == '0':
-                    print(f"   -> [ARMOR ACTIVE] Cannot turn off the Access Point. Leaving Radio ON.")
+                if target_ip == "192.168.1.253" and target_state == '0':
+                    print(f"   -> [ARMOR ACTIVE] Access Point must stay ON.")
                     continue 
 
-                # Click to Wireless Tab (Upgraded with 'contains' and a forced JS click!)
-                wireless_tab = wait.until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Wireless')]")))
+                # Click Wireless Tab using the link finder
+                wireless_tab = wait.until(EC.presence_of_element_located((By.XPATH, "//a[contains(., 'Wireless')]")))
                 driver.execute_script("arguments[0].click();", wireless_tab)
-                time.sleep(2) # Give the Wireless tab time to load
-                
-                # Check Radio box status 
-                radio_checkbox = wait.until(EC.presence_of_element_located((By.XPATH, "//input[contains(@id, 'wl-ap-enable-checkbox')]"))) 
-                is_checked = radio_checkbox.is_selected()
-
-                # JavaScript Click to bypass UI overlays
-                if target_state == '0' and is_checked:
-                    driver.execute_script("arguments[0].click();", radio_checkbox)
-                    print(f"   -> [ACTION] Radio Disabled. Interference cleared.")
-                elif target_state == '1' and not is_checked:
-                    driver.execute_script("arguments[0].click();", radio_checkbox)
-                    print(f"   -> [ACTION] Radio Enabled. Beam active.")
-                else:
-                    print(f"   -> [ACTION] Radio already in correct state.")
-
-                # Apply and Save 
-                driver.find_element(By.XPATH, "//span[text()='Apply']").click()
-                time.sleep(2) 
-                driver.find_element(By.XPATH, "//span[text()='Save']").click() 
                 time.sleep(3)
-
-                # ==========================================
-                # PHASE 2: EXECUTION & MASK APPLICATION
-                # ==========================================
-                if target_ip == "192.168.1.254" and target_state == '0':
-                    print(f"   -> [ARMOR ACTIVE] Cannot turn off the Access Point. Leaving Radio ON.")
-                    continue 
-
-                # Click to Wireless Tab 
-                wait.until(EC.element_to_be_clickable((By.XPATH, "//*[text()='Wireless']"))).click() 
                 
-                # Check Radio box status (using contains to bypass dynamic IDs)
+                # Manage Radio Checkbox
                 radio_checkbox = wait.until(EC.presence_of_element_located((By.XPATH, "//input[contains(@id, 'wl-ap-enable-checkbox')]"))) 
                 is_checked = radio_checkbox.is_selected()
 
-                # JavaScript Click to bypass UI overlays
                 if target_state == '0' and is_checked:
                     driver.execute_script("arguments[0].click();", radio_checkbox)
-                    print(f"   -> [ACTION] Radio Disabled. Interference cleared.")
+                    print(f"   -> [ACTION] Radio Disabled.")
                 elif target_state == '1' and not is_checked:
                     driver.execute_script("arguments[0].click();", radio_checkbox)
-                    print(f"   -> [ACTION] Radio Enabled. Beam active.")
-                else:
-                    print(f"   -> [ACTION] Radio already in correct state.")
+                    print(f"   -> [ACTION] Radio Enabled.")
 
-                # Apply and Save 
-                driver.find_element(By.XPATH, "//span[text()='Apply']").click()
-                time.sleep(2) 
-                driver.find_element(By.XPATH, "//span[text()='Save']").click() 
-                time.sleep(3) 
+                # Final Apply
+                apply_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//span[text()='Apply']")))
+                driver.execute_script("arguments[0].click();", apply_btn)
+                print(f"   -> [SUCCESS] Settings applied.")
+                time.sleep(2)
 
             except Exception as e:
-                error_msg = f"{router_label},{target_ip},ERROR,ERROR,ERROR,Connection Failed\n"
-                log_file.write(error_msg)
-                print(f"   -> [FAILED] Could not connect or find elements. Error: {e}")
+                log_file.write(f"{router_label},{target_ip},ERROR,ERROR,ERROR,Failed\n")
+                print(f"   -> [FAILED] Error: {e}")
 
-    print(f"\n[COMPLETE] Data saved directly to: {file_path}")
+    print(f"\n[COMPLETE] Results: {file_path}")
     driver.quit()
 
 if __name__ == "__main__":
