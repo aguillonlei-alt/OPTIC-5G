@@ -64,7 +64,7 @@ def apply_quantum_mask_and_gather_data():
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     with open(file_path, "a") as log_file:
-        # Write the CSV Headers (Updated to include Signal, Noise, and SNR)
+        # Write the CSV Headers 
         log_file.write(f"\nTest Run:,{timestamp},Mask:,{QUANTUM_MASK}\n")
         log_file.write("Router Label,IP Address,Signal,Noise,SNR,Radio Target\n")
 
@@ -81,11 +81,13 @@ def apply_quantum_mask_and_gather_data():
             print(f"\n[{router_label}] Accessing {target_ip}...")
 
             try:
-                # 1. Navigate and Log In 
+                # ==========================================
+                # 1. NAVIGATE AND LOG IN (Custom XPaths)
+                # ==========================================
                 driver.get(f"https://{target_ip}")
-                wait.until(EC.presence_of_element_located((By.ID, "username"))).send_keys(USERNAME)
-                driver.find_element(By.ID, "password").send_keys(PASSWORD)
-                driver.find_element(By.ID, "login-btn").click() 
+                wait.until(EC.presence_of_element_located((By.XPATH, "//input[@type='text']"))).send_keys(USERNAME)
+                driver.find_element(By.XPATH, "//input[@type='password']").send_keys(PASSWORD)
+                driver.find_element(By.XPATH, "//span[text()='Login']").click() 
 
                 # ==========================================
                 # PHASE 1: AUTOMATED DATA GATHERING
@@ -116,32 +118,32 @@ def apply_quantum_mask_and_gather_data():
                     continue 
 
                 # Click to Wireless Tab 
-                wait.until(EC.element_to_be_clickable((By.ID, "menu-wireless"))).click() 
+                wait.until(EC.element_to_be_clickable((By.XPATH, "//*[text()='Wireless']"))).click() 
                 
-                # Check Radio box status 
-                radio_checkbox = wait.until(EC.presence_of_element_located((By.ID, "enable-radio-checkbox"))) 
+                # Check Radio box status (using contains to bypass dynamic IDs)
+                radio_checkbox = wait.until(EC.presence_of_element_located((By.XPATH, "//input[contains(@id, 'wl-ap-enable-checkbox')]"))) 
                 is_checked = radio_checkbox.is_selected()
 
+                # JavaScript Click to bypass UI overlays
                 if target_state == '0' and is_checked:
-                    radio_checkbox.click() 
+                    driver.execute_script("arguments[0].click();", radio_checkbox)
                     print(f"   -> [ACTION] Radio Disabled. Interference cleared.")
                 elif target_state == '1' and not is_checked:
-                    radio_checkbox.click() 
+                    driver.execute_script("arguments[0].click();", radio_checkbox)
                     print(f"   -> [ACTION] Radio Enabled. Beam active.")
                 else:
                     print(f"   -> [ACTION] Radio already in correct state.")
 
                 # Apply and Save 
-                driver.find_element(By.ID, "apply-btn").click()
+                driver.find_element(By.XPATH, "//span[text()='Apply']").click()
                 time.sleep(2) 
-                driver.find_element(By.ID, "save-config-btn").click() 
+                driver.find_element(By.XPATH, "//span[text()='Save']").click() 
                 time.sleep(3) 
 
             except Exception as e:
-                # Updated error logging to match the 6-column CSV layout
                 error_msg = f"{router_label},{target_ip},ERROR,ERROR,ERROR,Connection Failed\n"
                 log_file.write(error_msg)
-                print(f"   -> [FAILED] Could not connect or find elements.")
+                print(f"   -> [FAILED] Could not connect or find elements. Error: {e}")
 
     print(f"\n[COMPLETE] Data saved directly to: {file_path}")
     driver.quit()
