@@ -13,22 +13,22 @@ import os
 # ==========================================
 # Verify these match your physical router layout!
 ROUTER_IPS = [
-    "192.168.1.253", # Index 0 (Sim R0): Physical R11 [ACCESS POINT]
-    "192.168.1.242", # Index 1 (Sim R1): Physical R10
-    "192.168.1.238", # Index 2 (Sim R2): Physical R9  
-    "192.168.1.239", # Index 3 (Sim R3): Physical R8
-    "SKIP",          # Index 4 (Sim R4): Physical R7 [NOT DEPLOYED]
-    "192.168.1.247", # Index 5 (Sim R5): Physical R6  
-    "192.168.1.244", # Index 6 (Sim R6): Physical R5
-    "192.168.1.248", # Index 7 (Sim R7): Physical R12
-    "192.168.1.250", # Index 8 (Sim R8): Physical R13
-    "192.168.1.252", # Index 9 (Sim R9): Physical R0  
-    "192.168.1.241", # Index 10 (Sim R10): Physical R1
-    "192.168.1.243", # Index 11 (Sim R11): Physical R2
-    "192.168.1.253", # Index 12 (Sim R12): Physical R3
-    "192.168.1.245", # Index 13 (Sim R13): Physical R14
-    "192.168.1.246", # Index 14 (Sim R14): Physical R16
-    "192.168.1.240", # Index 15 (Sim R15): Physical R15
+    "192.168.1.241", # Index 0 (Sim R0): Physical R11 [ACCESS POINT]
+    "192.168.1.254", # Index 1 (Sim R1): Physical R10
+    "192.168.1.253", # Index 2 (Sim R2): Physical R9  
+    "192.168.1.252", # Index 3 (Sim R3): Physical R8
+    "192.168.1.251",   # Index 4 (Sim R4): Physical R7 
+    "192.168.1.244", # Index 5 (Sim R5): Physical R6  
+    "192.168.1.243", # Index 6 (Sim R6): Physical R5
+    "192.168.1.240", # Index 7 (Sim R7): Physical R12
+    "192.168.1.242", # Index 8 (Sim R8): Physical R13
+    "192.168.1.248", # Index 9 (Sim R9): Physical R0  
+    "192.168.1.238", # Index 10 (Sim R10): Physical R1
+    "192.168.1.247", # Index 11 (Sim R11): Physical R2
+    "192.168.1.239", # Index 12 (Sim R12): Physical R3
+    "192.168.1.246", # Index 13 (Sim R13): Physical R14
+    "192.168.1.245", # Index 14 (Sim R14): Physical R16
+    "192.168.1.250", # Index 15 (Sim R15): Physical R15
     "SKIP"           # Index 16 (Sim R16): Physical R4
 ]
 
