@@ -84,10 +84,10 @@ def apply_quantum_mask_and_gather_data():
                 pwd_box.send_keys(Keys.RETURN) 
 
                 # ==========================================
-                # PHASE 1: DATA GATHERING
+                # PHASE 1: DATA GATHERING (STATUS TAB)
                 # ==========================================
-                print(f"   -> Waiting for live RF load...")
-                time.sleep(5) # Crucial: Allows the router to populate Signal numbers
+                print(f"   -> Waiting for Status page elements to load...")
+                time.sleep(6) # Essential: Gives the router time to calculate live RF data
                 
                 signal_value = wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/div/div[3]/div/div[4]/div/div[2]/div[2]/div/div/div[1]/div[1]/div[2]/div[1]/span[2]/pre"))).text
                 noise_value = wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/div/div[3]/div/div[4]/div/div[2]/div[2]/div/div/div[2]/div[2]/div[2]/div[1]/span[2]/pre"))).text
@@ -95,21 +95,24 @@ def apply_quantum_mask_and_gather_data():
 
                 radio_text = 'ON' if target_state == '1' else 'OFF'
                 log_file.write(f"{router_label},{target_ip},{signal_value},{noise_value},{snr_value},{radio_text}\n")
-                print(f"   -> [DATA SAVED] SNR: {snr_value}")
+                print(f"   -> [DATA SAVED] Signal: {signal_value} | SNR: {snr_value}")
 
                 # ==========================================
-                # PHASE 2: MASK APPLICATION
+                # PHASE 2: MASK APPLICATION (WIRELESS TAB)
                 # ==========================================
                 if target_ip == "192.168.1.253" and target_state == '0':
                     print(f"   -> [ARMOR ACTIVE] Access Point must stay ON.")
                     continue 
 
-                # Click Wireless Tab using the link finder
-                wireless_tab = wait.until(EC.presence_of_element_located((By.XPATH, "//a[contains(., 'Wireless')]")))
-                driver.execute_script("arguments[0].click();", wireless_tab)
-                time.sleep(3)
+                # STALL FIX: Pause to let the sidebar menu initialize
+                print(f"   -> Transitioning to Wireless settings...")
+                time.sleep(2) 
                 
-                # Manage Radio Checkbox
+                # Use PARTIAL_LINK_TEXT to bypass any hidden characters in the menu links
+                wireless_tab = wait.until(EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, "Wireless")))
+                driver.execute_script("arguments[0].click();", wireless_tab)
+                
+                # Wait for the Radio Checkbox to render on the new page
                 radio_checkbox = wait.until(EC.presence_of_element_located((By.XPATH, "//input[contains(@id, 'wl-ap-enable-checkbox')]"))) 
                 is_checked = radio_checkbox.is_selected()
 
@@ -120,15 +123,15 @@ def apply_quantum_mask_and_gather_data():
                     driver.execute_script("arguments[0].click();", radio_checkbox)
                     print(f"   -> [ACTION] Radio Enabled.")
 
-                # Final Apply
+                # Click Apply using the span text confirmed in your F12 screenshot
                 apply_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//span[text()='Apply']")))
                 driver.execute_script("arguments[0].click();", apply_btn)
-                print(f"   -> [SUCCESS] Settings applied.")
-                time.sleep(2)
+                print(f"   -> [SUCCESS] Settings applied to {target_ip}")
+                time.sleep(3) 
 
             except Exception as e:
-                log_file.write(f"{router_label},{target_ip},ERROR,ERROR,ERROR,Failed\n")
-                print(f"   -> [FAILED] Error: {e}")
+                log_file.write(f"{router_label},{target_ip},ERROR,ERROR,ERROR,Transition Failed\n")
+                print(f"   -> [FAILED] Could not move past Status Tab. Error: {e}")
 
     print(f"\n[COMPLETE] Results: {file_path}")
     driver.quit()
