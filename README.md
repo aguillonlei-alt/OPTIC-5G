@@ -122,7 +122,6 @@ To validate the fidelity of our Digital Twin (NS-3) against the Physical Testbed
 $$RMSE = \sqrt{\frac{\sum_{i=1}^{n} (y_{sim} - y_{phys})^2}{n}}$$
 
 *Result: **13.76 dB**, indicating high simulation accuracy.*
-
 ## 📊 Key Findings
 
 ### 1. Simulation Results (Manila City)
