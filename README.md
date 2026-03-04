@@ -54,8 +54,9 @@ graph LR
     E --> G[Physical Hardware Testbed];
 ```
 
-📂 Repository Structure
-Plaintext
+## 📂 Repository Structure
+
+```text
 OPTIC-5G/
 ├── data/                  # Raw CSVs (Tower locations, obstructions)
 ├── scripts/
