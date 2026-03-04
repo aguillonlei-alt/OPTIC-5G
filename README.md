@@ -8,17 +8,17 @@
     Validated via NS-3 Digital Twin & Physical Hardware Testbed
   </p>
 
-  <a href="https://www.python.org/">
-    <img src="https://img.shields.io/badge/Python-3.8%2B-blue?style=for-the-badge&logo=python&logoColor=white" alt="Python">
+  <a href="[https://www.python.org/](https://www.python.org/)">
+    <img src="[https://img.shields.io/badge/Python-3.8%2B-blue?style=for-the-badge&logo=python&logoColor=white](https://img.shields.io/badge/Python-3.8%2B-blue?style=for-the-badge&logo=python&logoColor=white)" alt="Python">
   </a>
-  <a href="https://qiskit.org/">
-    <img src="https://img.shields.io/badge/Qiskit-Quantum-purple?style=for-the-badge&logo=qiskit&logoColor=white" alt="Qiskit">
+  <a href="[https://qiskit.org/](https://qiskit.org/)">
+    <img src="[https://img.shields.io/badge/Qiskit-Quantum-purple?style=for-the-badge&logo=qiskit&logoColor=white](https://img.shields.io/badge/Qiskit-Quantum-purple?style=for-the-badge&logo=qiskit&logoColor=white)" alt="Qiskit">
   </a>
-  <a href="https://www.nsnam.org/">
-    <img src="https://img.shields.io/badge/NS--3-Simulation-green?style=for-the-badge&logo=cplusplus&logoColor=white" alt="NS-3">
+  <a href="[https://www.nsnam.org/](https://www.nsnam.org/)">
+    <img src="[https://img.shields.io/badge/NS--3-Simulation-green?style=for-the-badge&logo=cplusplus&logoColor=white](https://img.shields.io/badge/NS--3-Simulation-green?style=for-the-badge&logo=cplusplus&logoColor=white)" alt="NS-3">
   </a>
-  <a href="https://opensource.org/licenses/MIT">
-    <img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="License">
+  <a href="[https://opensource.org/licenses/MIT](https://opensource.org/licenses/MIT)">
+    <img src="[https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)" alt="License">
   </a>
   <br>
 </div>
@@ -54,7 +54,6 @@ graph LR
     D -->|CVaR-VQE Ansatz| E[Optimized Mask];
     E --> F[NS-3 Simulation];
     E --> G[Physical Hardware Testbed];
-
 📂 Repository Structure
 Plaintext
 OPTIC-5G/
