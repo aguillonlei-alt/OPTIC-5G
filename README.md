@@ -79,6 +79,40 @@ OPTIC-5G/
 
 ---
 
+## 📐 Mathematical Framework
+
+The OPTIC-5G framework translates physical network constraints into mathematical models solvable by both classical and quantum algorithms.
+
+### 1. Network Coverage Model
+We utilize a **Hexagonal Tessellation Model** to determine the baseline node density required for the target area ($A_{total}$).
+$$A_{cell} = \frac{3\sqrt{3}}{2} R^2$$
+$$N_{baseline} \approx \frac{A_{total}}{A_{cell}}$$
+*Where $R=50m$ is the effective radius of a single 5G small cell.*
+
+### 2. Classical Formulation (ILP)
+Before quantum processing, we use **Integer Linear Programming (ILP)** to filter the search space. The objective is to minimize active nodes ($x_i$) while ensuring every user ($u_j$) is covered.
+$$\text{Minimize } \sum_{i \in B} x_i$$
+$$\text{Subject to } \sum_{i \in B} C_{ij} x_i \ge 1, \quad \forall j \in U$$
+*Where $C_{ij} = 1$ if node $i$ covers user $j$, else $0$.*
+
+### 3. Quantum Formulation (QUBO)
+The remaining candidate nodes are mapped to a **Quadratic Unconstrained Binary Optimization (QUBO)** problem. The Hamiltonian $H(x)$ minimizes energy consumption ($h_i$) while penalizing inter-cell interference ($J_{ij}$).
+
+$$H(x) = \sum_{i} h_i x_i + \sum_{i<j} J_{ij} x_i x_j$$
+
+**Specific Hamiltonian used in this Thesis:**
+$$H(x) = \sum_{i=1}^{N} (P_{tx, i} - R_{cov}) x_i + \sum_{(i,j) \in \text{Interference}} P_{penalty} x_i x_j$$
+* **$P_{tx}$:** Transmission Power (Cost)
+* **$R_{cov}$:** Reward for coverage (1800.0)
+* **$P_{penalty}$:** Penalty for Co-Channel Interference (600.0)
+
+This Hamiltonian is solved using the **CVaR-VQE** algorithm on a parameterized quantum circuit (TwoLocal Ansatz).
+
+### 4. Validation Metric (RMSE)
+To validate the fidelity of our Digital Twin (NS-3) against the Physical Testbed (PharOS), we calculated the **Root Mean Square Error**:
+$$RMSE = \sqrt{\frac{\sum_{i=1}^{n} (y_{sim} - y_{phys})^2}{n}}$$
+*Result: **13.76 dB**, indicating high simulation accuracy.*
+
 ## 📊 Key Findings
 
 ### 1. Simulation Results (Manila City)
