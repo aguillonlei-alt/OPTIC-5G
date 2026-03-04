@@ -67,6 +67,7 @@ OPTIC-5G/
 ├── simulations/           # NS-3 C++ Scripts (manila_5g.cc)
 ├── hardware/              # Logs from TP-Link PharOS Routers
 └── README.md              # This file
+```
 
 ## 🔬 Methodology & Tech Stack
 
