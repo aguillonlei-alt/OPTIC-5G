@@ -56,10 +56,6 @@ graph LR
     E --> G[Physical Hardware Testbed];
     style D fill:#f9f,stroke:#333,stroke-width:2px
     style G fill:#bbf,stroke:#333,stroke-width:2px
-<div align="center">
-<img src="https://www.google.com/search?q=https://img.shields.io/badge/Made%2520with-Qiskit-purple%3Fstyle%3Dflat-square" alt="Qiskit">
-<img src="https://www.google.com/search?q=https://img.shields.io/badge/Simulated%2520in-NS--3-green%3Fstyle%3Dflat-square" alt="NS3">
-</div>
 
 📂 Repository Structure
 OPTIC-5G/
@@ -110,6 +106,11 @@ python scripts/run_hybrid_opt.py --input data/manila_towers.csv
 Polytechnic University of the Philippines – Sta. Mesa, Manila
 Bachelor of Science in Electronics Engineering (BSECE)
 Jann Lei Randolf A. Aguillon
+
+<div align="center">
+<img src="https://www.google.com/search?q=https://img.shields.io/badge/Made%2520with-Qiskit-purple%3Fstyle%3Dflat-square" alt="Qiskit">
+<img src="https://www.google.com/search?q=https://img.shields.io/badge/Simulated%2520in-NS--3-green%3Fstyle%3Dflat-square" alt="NS3">
+</div>2
 
 <div align="center">
 <img src="https://www.google.com/search?q=https://img.shields.io/badge/Made%2520with-Qiskit-purple%3Fstyle%3Dflat-square" alt="Qiskit">
