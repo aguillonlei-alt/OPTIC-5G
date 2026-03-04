@@ -46,7 +46,7 @@ It uses a unique **Hybrid Pipeline**:
 
 The system follows a strict data-to-deployment pipeline.
 
-```mermaid
+
 graph LR
     A[Raw Geospatial Data] -->|Pandas/Geopy| B(Classical Filtering);
     B -->|Greedy + ILP| C{Reduced Candidate Set};
@@ -56,6 +56,10 @@ graph LR
     E --> G[Physical Hardware Testbed];
     style D fill:#f9f,stroke:#333,stroke-width:2px
     style G fill:#bbf,stroke:#333,stroke-width:2px
+<div align="center">
+<img src="https://www.google.com/search?q=https://img.shields.io/badge/Made%2520with-Qiskit-purple%3Fstyle%3Dflat-square" alt="Qiskit">
+<img src="https://www.google.com/search?q=https://img.shields.io/badge/Simulated%2520in-NS--3-green%3Fstyle%3Dflat-square" alt="NS3">
+</div>
 
 📂 Repository Structure
 OPTIC-5G/
