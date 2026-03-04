@@ -54,5 +54,3 @@ graph LR
     D -->|CVaR-VQE Ansatz| E[Optimized Mask];
     E --> F[NS-3 Simulation];
     E --> G[Physical Hardware Testbed];
-    style D fill:#f9f,stroke:#333,stroke-width:2px
-    style G fill:#bbf,stroke:#333,stroke-width:2px
